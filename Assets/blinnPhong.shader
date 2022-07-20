@@ -116,12 +116,39 @@ Shader "Unlit/blinnPhong"
             sampler2D _Diffuse;
             sampler2D _Specular;
             samplerCUBE _Environment;
-            float4 _LightColor0;
+            float4 _LightColor0; // 유니티 현재 라이트 색상을 담고있는 내장 변수.
 
             // 프래그먼트 함수
-            fixed4 frag (vOUT i) : SV_Target
+            fixed4 frag(vOUT i) : SV_Target
             {
+                // 조명계산에 필요한 일반벡터들을 먼저 구함
+                float3 unpackNormal = UnpackNormal(tex2D(_Normal, i.uv)); // 노말맵에서 텍셀값을 샘플링해온 뒤, -1 ~ 1 사이의 탄젠트공간 노멀벡터로 맵핑해주는 유니티 내장함수 UnpackNormal() 사용.
+                // 참고로, 이런 UnpackNormal() 같은 유니티의 ShaderLab 내장함수가 중요한 이유는, 크로스 플랫폼에서 다양한 셰이딩 언어로 빌드하더라도, 이 내장함수를 사용하면 각각의 플랫폼에 맞게 노말맵을 샘플링 및 맵핑해서 탄젠트공간 노멀벡터로 바꿔주는 코드로 알아서 변환시켜주기 때문임!
 
+                float3 nrm = normalize(mul(transpose(i.tbn), unpackNormal)); // 노말맵에서 샘플링 및 맵핑한 탄젠트공간 노멀벡터에 TBN 행렬을 곱해서 월드공간 노멀벡터로 만듦. (이때, Cg 셰이더는 '행 우선 행렬'을 사용하므로, 열 우선 행렬인 현재의 TBN 행렬을 transpose() 함수로 전치행렬로 변환해 줌.)
+                float3 viewDir = normalize(_WorldSpaceCameraPos - i.worldPos); // <월드공간 카메라좌표(유니티 내장변수) - 월드공간 프래그먼트 위치좌표> 를 통해 카메라에서 각 프래그먼트까지의 카메라벡터를 구함.
+                float3 halfVec = normalize(viewDir + _WorldSpaceLightPos0.xyz); // <월드공간 디렉셔널라이트 벡터(유니티 내장변수) + 월드공간 카메라벡터> 를 통해 카메라벡터와 조명벡터 사이의 하프벡터를 구함. (블린 퐁에서는 반사벡터 대신 하프벡터를 구해서 스펙큘러를 계산했었지?)
+                float3 env = texCUBE(_Environment, reflect(-viewDir, nrm)).rgb; // 뒤집은 카메라벡터와 월드공간 노멀벡터를 기준으로 반사벡터를 구해서(카메라를 기준으로 해당 프래그먼트에 맺힐 큐브맵의 텍셀을 역추적하는 원리였지?) 큐브맵 텍스쳐를 샘플링할 float3 벡터를 구하고, 이거로 큐브맵 텍스쳐를 샘플링함.
+                float3 sceneLight = lerp(_LightColor0, env + _LightColor0 * 0.5, 0.5); // GLSL 에서 mix() 내장함수로 큐브맵 텍셀값과 조명색상을 적절한 비율로 섞어줬던 것처럼, 여기서는 lerp() 유니티 내장함수로 섞어주고 있음. 이름만 다를 뿐 둘은 사실상 같은 일을 해주는 함수!
+
+                // 라이팅 계산
+                float diffAmt = max(dot(nrm, _WorldSpaceLightPos0.xyz), 0.0); // 디퓨즈 라이팅 계산 : 월드공간 노멀벡터와 월드공간 디렉셔널라이트 벡터(유니티 내장변수)를 내적계산하고, 내적결과값에서 음수를 제거
+                float specAmt = max(dot(halfVec, nrm), 0.0); // 스펙큘러 라이팅 계산 : 블린 퐁 공식에서는 하프벡터와 월드공간 노멀벡터를 내적계산하고, 내적결과값에서 음수를 제거해서 스펙큘러 라이팅을 계산했었지?
+
+                // 텍스쳐 샘플링
+                float4 tex = tex2D(_Diffuse, i.uv); // 디퓨즈맵 (물체의 원색상 텍스쳐) 샘플링
+                float4 specMask = tex2D(_Specular, i.uv); // 스펙큘러맵 (스펙큘러 재질을 적용할 영역만 흰색으로 마스킹한 텍스쳐) 샘플링
+                
+                // 스펙큘러 색상 계산
+                float3 specCol = specMask.rgb * specAmt; // 스펙큘러맵에 마스킹된 영역 위주로 스펙큘러 라이팅이 계산될 수 있도록 곱해줌.
+
+                // 최종 라이팅 성분 계산
+                float3 finalDiffuse = sceneLight * diffAmt * tex.rgb; // <씬의 조명값(큐브맵 반사조명과 현재 씬의 조명색상이 섞임) * 디퓨즈 라이팅 * 디퓨즈맵 (물체의)원색상> 으로 최종 디퓨즈 값 계산
+                float3 finalSpec = sceneLight * specCol; // <씬의 조명값(큐브맵 반사조명과 현재 씬의 조명색상이 섞임) * 마스킹 처리된 스펙큘러 라이팅> 으로 최종 스펙큘러 값 계산
+                float3 finalAmbient = UNITY_LIGHTMODEL_AMBIENT.rgb * tex.rgb; // <현재 씬의 환경광(유니티 내장변수) * 디퓨즈맵 (물체의)원색상> 으로 최종 앰비언트 값 계산
+
+                // 라이팅 결과를 합쳐서 최종 프래그먼트 색상값 리턴 (glsl에서는 최종 색상값을 out 변수 또는 gl_FragColor 에 할당했었지?)
+                return float4(finalDiffuse + finalSpec + finalAmbient, 1.0);
             }
             ENDCG
         }
