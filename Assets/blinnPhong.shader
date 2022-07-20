@@ -91,10 +91,24 @@ Shader "Unlit/blinnPhong"
                 float3 worldPos : TEXCOORD4;
             };
 
-            // 버텍스 함수
-            vIN vert (vOUT v)
+            // 버텍스 함수 (GLSL의 버텍스 셰이더와 마찬가지로, 월드공간의 TBN 행렬, UV좌표, 위치좌표 등을 구한 뒤, 프래그먼트 셰이더로 보간해서 넘기는 역할은 동일함.)
+            vOUT vert (vIN v)
             {
+                vOUT o; // 버텍스 출력 구조체를 o 라는 이름의 변수로 가져옴.
+                o.pos = UnityObjectToClipPos(v.vertex); // 버텍스 위치좌표에 MVP 행렬을 곱해 클립공간 좌표계로 변환해주는 유니티 내장함수 사용
+                o.uv = v.uv; // 입력 구조체의 버텍스 uv좌표 데이터를 출력 구조체의 uv좌표 데이터로 넘겨줌. -> 프래그먼트 함수에서 보간될거임.
 
+                // 월드공간 노말벡터, 탄젠트벡터, 바이탄젠트벡터를 구해 TBN 행렬을 만듦.
+                float3 worldNormal = UnityObjectToWorldNormal(v.normal); // 버텍스 노말벡터에 노말행렬을 곱해 월드공간 노멀벡터로 변환해주는 유니티 내장함수 사용
+                float3 worldTangent = UnityObjectToWorldDir(v.tangent.xyz); // 버텍스 탄젠트벡터를 월드공간 탄젠트벡터로 변환해주는 (꼭 탄젠트벡터가 아니여도 방향을 갖는 벡터데이터 자체를 변환해주는 거 같음) 유니티 내장함수 사용
+                float3 worldBitan = cross(worldNormal, worldTangent); // 월드공간 노말벡터와 월드공간 탄젠트벡터를 외적계산하여 월드공간 바이탄젠트 벡터를 구함.
+
+                // 유니티는 현재 오브젝트 공간에서 월드공간으로 위치좌표를 변환해주는 내장함수가 없기 때문에,
+                // 모델행렬을 직접 버텍스 위치좌표에 곱해줘서 월드공간 좌표계로 변환해주는 거 같음.
+                o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
+                o.tbn = float3x3(worldTangent, worldBitan, worldNormal); // 월드공간 노말벡터, 탄젠트벡터, 바이탄젠트 벡터를 3*3 행렬로 묶어서 TBN 행렬로 만든 뒤, 출력구조체에 할당해서 보간시켜 전달함.
+
+                return o; // 출력 구조체의 변수들을 모두 계산하여 다음 파이프라인으로 전달함. (프래그먼트 함수에서 보간되어 전달될거임.)
             }
 
             // 프래그먼트 함수에서 사용할 유니폼 변수 선언
