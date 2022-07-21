@@ -10,7 +10,7 @@ Shader "Unlit/solidColor"
     }
     SubShader
     {
-        // 단색 셰이더를 알파 블렌딩 셰이더 (반투명 셰이더)로 만들기 위해, SubShader 블록에서 이 쉐이더가 적용된 메쉬가 그려지는 순서, 즉, Queue 를 "Transparent" 로 지정해야 함.
+        // 단색 셰이더를 알파 블렌딩 셰이더 (반투명 셰이더)로 만들기 위해, SubShader 블록에서 이 쉐이더가 적용된 메쉬가 그려지는 순서, 즉, Queue 를 "Transparent" 로 지정해야 함. -> 이걸 해줘야 색상의 알파채널이 기능을 하기 시작함!
         Tags { "Queue" = "Transparent" }
         LOD 100
 
