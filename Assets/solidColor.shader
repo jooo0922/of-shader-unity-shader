@@ -8,13 +8,16 @@ Shader "Unlit/solidColor"
     {
         _Color("Color", Color) = (1, 1, 1, 1) // _Color 라는 이름의 유니폼 변수에 인터페이스로부터 값을 받아 사용할 수 있도록 Property 추가.
     }
-        SubShader
+    SubShader
     {
-        Tags { "RenderType" = "Opaque" }
+        // 단색 셰이더를 알파 블렌딩 셰이더 (반투명 셰이더)로 만들기 위해, SubShader 블록에서 이 쉐이더가 적용된 메쉬가 그려지는 순서, 즉, Queue 를 "Transparent" 로 지정해야 함.
+        Tags { "Queue" = "Transparent" }
         LOD 100
 
         Pass
         {
+            // 이후 원하는 블렌딩 모드 공식을 직접 해당 Pass 블록에 지정해줘야 함!
+            Blend SrcAlpha OneMinusSrcAlpha
             CGPROGRAM
 
             // 버텍스 셰이더와 프래그먼트 셰이더 각각의 main() 함수 이름을 #pragma 지시어로 지정해 줌.
